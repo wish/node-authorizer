@@ -1,0 +1,21 @@
+FROM --platform=$BUILDPLATFORM golang:alpine as builder
+
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
+ENV GOARCH=${TARGETARCH} GOOS=${TARGETOS}
+ENV GO111MODULE=on
+
+WORKDIR /go/src/k8s.io/kops/node-authorizer
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+COPY . /go/src/k8s.io/kops/node-authorizer/
+RUN CGO_ENABLED=0 go build -o ./node-authorizer -a -installsuffix cgo ./cmd/node-authorizer
+
+
+FROM alpine:3.11
+RUN apk --no-cache add ca-certificates
+COPY --from=0 /go/src/k8s.io/kops/node-authorizer/node-authorizer /node-authorizer
+ENTRYPOINT ["/node-authorizer"]
