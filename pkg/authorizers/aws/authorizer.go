@@ -33,8 +33,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/fullsailor/pkcs7"
@@ -53,14 +51,14 @@ var (
 	CheckIPAddress = "verify-ip"
 	// CheckSignature indicates we validate the signature of the document
 	CheckSignature = "verify-signature"
+	// VerifyOffline indicates we should verify the request without using the EC2 API
+	VerifyOffline = "verify-offline"
 )
 
 // awsNodeAuthorizer is the implementation for a node authorizer
 type awsNodeAuthorizer struct {
 	// client is the ec2 interface
 	client ec2iface.EC2API
-	// asgc is the autoscaling client
-	asgc autoscalingiface.AutoScalingAPI
 	// config is the service configuration
 	config *server.Config
 	// identity is the identity document for the instance we are running on
@@ -96,7 +94,6 @@ func NewAuthorizer(config *server.Config) (server.Authorizer, error) {
 		return nil, err
 	}
 	client := ec2.New(sess)
-	asgc := autoscaling.New(sess)
 
 	// @step: get information on the instance we are running
 	instance, err := getInstance(client, document.InstanceID)
@@ -106,7 +103,6 @@ func NewAuthorizer(config *server.Config) (server.Authorizer, error) {
 
 	return &awsNodeAuthorizer{
 		client:   client,
-		asgc:     asgc,
 		config:   config,
 		identity: document,
 		instance: instance,
@@ -134,7 +130,13 @@ func (a *awsNodeAuthorizer) Authorize(ctx context.Context, r *server.NodeRegistr
 			}
 		}
 
-		if reason, err := a.validateNodeInstance(ctx, identity, r); err != nil {
+		var reason string
+		if !a.config.UseFeature(VerifyOffline) {
+			reason, err = a.validateNodeInstance(ctx, identity, r)
+		} else {
+			reason, err = a.validateNodeOffline(ctx, identity, r)
+		}
+		if err != nil {
 			return "", err
 		} else if reason != "" {
 			return reason, nil
@@ -152,10 +154,35 @@ func (a *awsNodeAuthorizer) Authorize(ctx context.Context, r *server.NodeRegistr
 	return nil
 }
 
+// validateNodeOffline validates the account and ip of the requester only, using only the provided identity document
+// and without talking to the EC2 api
+func (a *awsNodeAuthorizer) validateNodeOffline(ctx context.Context, doc *ec2metadata.EC2InstanceIdentityDocument, spec *server.NodeRegistration) (string, error) {
+	// check the requester is in the correct account
+	accountID := a.identity.AccountID
+	if a.config.AWSAccountOverride != "" {
+		accountID = a.config.AWSAccountOverride
+	}
+	if accountID != doc.AccountID {
+		return "instance running in different account id", nil
+	}
+
+	// check the requester is as expected
+	if a.config.UseFeature(CheckIPAddress) {
+		if spec.Spec.RemoteAddr != aws.StringValue(&doc.PrivateIP) {
+			return fmt.Sprintf("ip address conflict, expected: %s, got: %s", aws.StringValue(&doc.PrivateIP), spec.Spec.RemoteAddr), nil
+		}
+	}
+	return "", nil
+}
+
 // validateNodeInstance is responsible for checking the instance exists and it part of the cluster
 func (a *awsNodeAuthorizer) validateNodeInstance(ctx context.Context, doc *ec2metadata.EC2InstanceIdentityDocument, spec *server.NodeRegistration) (string, error) {
 	// @check we are in the same account
-	if a.identity.AccountID != doc.AccountID {
+	accountID := a.identity.AccountID
+	if a.config.AWSAccountOverride != "" {
+		accountID = a.config.AWSAccountOverride
+	}
+	if accountID != doc.AccountID {
 		return "instance running in different account id", nil
 	}
 

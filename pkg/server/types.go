@@ -82,6 +82,8 @@ type Config struct {
 	TLSClientCAPath string
 	// TLSPrivateKeyPath is the path to the private key
 	TLSPrivateKeyPath string
+	// AWSAccountOverride overrides the expected AWS account ID
+	AWSAccountOverride string
 }
 
 // UseFeature indicates a feature is in use
