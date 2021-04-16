@@ -103,6 +103,12 @@ func addServerCommand() cli.Command {
 				EnvVar: "AUTHORIZATION_TIMEOUT",
 				Value:  15 * time.Second,
 			},
+			cli.StringFlag{
+				Name:   "aws-account-override",
+				Usage:  "The AWS account ID of child nodes",
+				EnvVar: "AWS_ACCOUNT_OVERRIDE",
+				Value:  "",
+			},
 		},
 
 		Action: func(ctx *cli.Context) error {
@@ -124,6 +130,7 @@ func actionServerCommand(ctx *cli.Context) error {
 		TLSClientCAPath:      ctx.String("tls-client-ca"),
 		TLSPrivateKeyPath:    ctx.String("tls-private-key"),
 		TokenDuration:        ctx.Duration("token-ttl"),
+		AWSAccountOverride:   ctx.String("aws-account-override"),
 	}
 
 	if ctx.String("authorizer") == "" {

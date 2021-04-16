@@ -19,20 +19,41 @@ package utils
 import (
 	crypto_rand "crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // GetKubernetesClient returns a kubernetes api client for us
 func GetKubernetesClient() (kubernetes.Interface, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
+	env := os.Getenv("KUBECONFIG")
+	if env == "" {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
 
-	return kubernetes.NewForConfig(config)
+		return kubernetes.NewForConfig(config)
+	} else {
+		config, err := clientcmd.LoadFromFile(env)
+		if err != nil {
+			return nil, err
+		}
+		overrides := clientcmd.ConfigOverrides{Timeout: "10s"}
+		clientConfig, err := clientcmd.NewDefaultClientConfig(*config, &overrides).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create API client configuration from kubeconfig: %v", err)
+		}
+
+		client, err := kubernetes.NewForConfig(clientConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create API client: %v", err)
+		}
+		return client, nil
+	}
 }
 
 // FileExists checks if the file exists
