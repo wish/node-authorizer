@@ -35,8 +35,8 @@ func NewVerifier() (server.Verifier, error) {
 
 // Verify is responsible for build a identification document
 func (a *awsNodeVerifier) VerifyIdentity(ctx context.Context) ([]byte, error) {
-	errs := make(chan error)
-	doneCh := make(chan []byte)
+	errs := make(chan error, 1)
+	doneCh := make(chan []byte, 1)
 
 	go func() {
 		encoded, err := func() ([]byte, error) {

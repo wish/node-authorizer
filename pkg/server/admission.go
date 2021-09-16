@@ -35,7 +35,7 @@ var (
 
 // authorizeNodeRequest is responsible for handling the incoming authorization request
 func (n *NodeAuthorizer) authorizeNodeRequest(ctx context.Context, request *NodeRegistration) error {
-	doneCh := make(chan error)
+	doneCh := make(chan error, 1)
 
 	// @step: create a context to run under
 	ctx, cancel := context.WithTimeout(ctx, n.config.AuthorizationTimeout)
